@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 """
-Template of home assignment 7 (Robot Control). Node to take a set of
+Solution to home assignment 7 (Robot Control). Node to take a set of
 waypoints and to drive a differential drive robot through those waypoints
 using a simple PD controller and provided odometry data.
 
@@ -25,6 +25,7 @@ from tf_transformations import euler_from_quaternion
 
 class PDController(Node):
     def __init__(self):
+        # Your code here
         super().__init__('controller')
         
         # Wait for run other nodes
@@ -36,9 +37,11 @@ class PDController(Node):
 
         self.sub_odom = self.create_subscription(
             Odometry, '/diff_cont/odom', self.onOdom, 10)
+        self.sub_goal = self.create_subscription(
+            PoseStamped, '/goal_pose', self.onGoal, 10)
 
         self.vel_cmd_pub = self.create_publisher(
-            Twist, '/diff_cont/cmd_vel_unstamped', 10)
+            Twist, '/diff_cont/cmd_vel', 10)
         self.pub_viz = self.create_publisher(Marker, "waypoints", 10)
 
         self.marker_frame = "odom"
@@ -59,21 +62,30 @@ class PDController(Node):
         self.waypoints = []
         self.waypoints_x = []
         self.waypoints_y = []
-        read_waypoints_x = self.declare_parameter('waypoints_x').value
-        read_waypoints_y = self.declare_parameter('waypoints_y').value
+        read_waypoints_x = self.declare_parameter('waypoints_x', [0.0]).value
+        read_waypoints_y = self.declare_parameter('waypoints_y', [0.0]).value
+        self.Kp = np.array(self.declare_parameter('Kp', [0.0, 0.0]).value)
+        self.Kd = np.array(self.declare_parameter('Kd', [0.0, 0.0]).value)
+
+        # Identify the waypoints parameter is correcly load or not
+        if (read_waypoints_x == [0.0]) and (read_waypoints_y == [0.0]):
+            self.get_logger().error("!!!!!!!!!!!!!!ERROR!!!!!!!!!!!!!!")
+            self.get_logger().error("Parameters not loaded correctly")
+            self.get_logger().error("Please check your launch file to load yaml file correctly")
+            self.get_logger().error("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        
         if (read_waypoints_x) and (read_waypoints_y):
             for i in range(len(read_waypoints_x)):
                 self.waypoints.append([read_waypoints_x[i], read_waypoints_y[i]])
         self.waypoints = np.array(self.waypoints)
 
         self.distance_margin = self.declare_parameter(
-            'distance_margin', 0.0).value
+            'distance_margin', 0.05).value
+        self.target_angle = self.wrapAngle(self.declare_parameter(
+            'target_angle', 0.0).value)
 
-        self.Kp = np.array(self.declare_parameter('Kp', [0.0, 0.0]).value)
-        self.Kd = np.array(self.declare_parameter('Kd', [0.0, 0.0]).value)
-
-        # Print Params
-        self.get_logger().info(f'Waypoints: {self.waypoints}')
+        # Check Params
+        self.get_logger().info(f'Waypoints: \n {self.waypoints}')
         self.get_logger().info(f'Kp: {self.Kp}')
         self.get_logger().info(f'Kd: {self.Kd}')
         self.get_logger().info(f'Start Time: {self.start_time}')
